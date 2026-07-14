@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Space Cinema</title>
+    <!-- Sử dụng Tailwind CSS để thiết kế giao diện rạp phim cực kỳ sang trọng -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Tùy biến thanh cuộn tối giản */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        /* CSS tùy biến phụ đề to, rõ nét, có nền đen mờ phù hợp xem trong không gian VR */
+        video::cue {
+            background: rgba(0, 0, 0, 0.75);
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            font-size: 22px;
+            line-height: 1.4;
+        }
+        /* Vùng cảm ứng cử chỉ phủ lên trên Video */
+        .touch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+        }
+        .gesture-zone {
+            height: 100%;
+            position: relative;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between font-sans selection:bg-cyan-500 selection:text-white">
+
+    <!-- HEADER -->
+    <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur px-6 py-4 flex justify-between items-center z-20">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">🎬</span>
+            <h1 class="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">VR SPACE CINEMA</h1>
+        </div>
+        <div class="text-xs text-slate-500 font-mono">v2.1 • Offline Local Player</div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-6xl mx-auto z-10">
+        
+        <!-- ========================================== -->
+        <!-- ĐÂY LÀ GIAO DIỆN DASHBOARD KHỞI ĐỘNG -->
+        <!-- ========================================== -->
+        <div id="dashboardView" class="w-full max-w-2xl space-y-8 py-8">
+            
+            <!-- THẺ PHIM ĐANG XEM DỞ (CHỈ HIỆN KHI CÓ LỊCH SỬ) -->
+            <div id="resumeCard" class="hidden bg-gradient-to-br from-slate-900 to-slate-950 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl shadow-cyan-950/20 relative overflow-hidden group">
+                <div class="absolute -right-10 -top-10 text-9xl opacity-5 pointer-events-none">🍿</div>
+                <div class="flex items-center gap-2 text-cyan-400 font-bold text-sm tracking-wider uppercase mb-3">
+                    <span class="animate-pulse">●</span> Xem tiếp dở dang
+                </div>
+                <h2 id="resumeTitle" class="text-xl font-bold text-slate-100 mb-1 truncate">Tên phim chưa rõ</h2>
+                <p id="resumeMeta" class="text-sm text-slate-400 mb-6">Đã xem đến: 00:00:00 • Phụ đề: Sẵn sàng</p>
+                
+                <!-- Nút CHƠI TIẾP -->
+                <button onclick="triggerFileSelect('resume')" class="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black tracking-widest rounded-xl transition duration-300 shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center justify-center gap-2 text-lg">
+                    <span>▶</span> CHƠI TIẾP NGAY
+                </button>
+            </div>
+
+            <!-- KHU VỰC MỞ PHIM MỚI -->
+            <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center space-y-6">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-200">Mở Tệp Phim Mới</h3>
+                    <p class="text-xs text-slate-500 mt-1">Mẹo: Chọn cùng lúc cả file Video & file Phụ đề để hệ thống tự động đồng bộ!</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Nút chọn phim mới -->
+                    <button onclick="triggerFileSelect('new')" class="py-4 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl border border-slate-700 transition duration-200 flex items-center justify-center gap-2">
+                        <span>📁</span> Chọn Phim & Phụ đề
+                    </button>
+                    <!-- Nút xóa lịch sử xem -->
+                    <button id="clearHistoryBtn" onclick="clearHistory()" class="py-4 px-6 bg-red-950/20 hover:bg-red-950/40 text-red-400 font-medium rounded-xl border border-red-900/30 transition duration-200 flex items-center justify-center gap-2 text-sm">
+                        <span>🗑️</span> Xóa lịch sử rạp
+                    </button>
+                </div>
+            </div>
+
+            <!-- THÔNG TIN PHIÊN BẢN VÀ HƯỚNG DẪN VR -->
+            <div class="grid grid-cols-3 gap-4 text-center text-xs text-slate-500">
+                <div class="bg-slate-900/20 p-3 rounded-lg border border-slate-900">
+                    <span class="block text-slate-400 font-bold mb-1">Double Tap Trái Phải</span>
+                    Tua lùi / tiến 5 giây
+                </div>
+                <div class="bg-slate-900/20 p-3 rounded-lg border border-slate-900">
+                    <span class="block text-slate-400 font-bold mb-1">Tap Giữa</span>
+                    Play / Pause phim
+                </div>
+                <div class="bg-slate-900/20 p-3 rounded-lg border border-slate-900">
+                    <span class="block text-slate-400 font-bold mb-1">Double Tap Giữa</span>
+                    Thoát Fullscreen
+                </div>
+            </div>
+
+            <!-- INPUT CHỌN FILE ẨN (Hỗ trợ multi-select) -->
+            <input type="file" id="mediaFileInput" accept="video/*, .srt, .vtt" multiple class="hidden" onchange="handleFileSelection(event)">
+        </div>
+
+        <!-- ========================================== -->
+        <!-- ĐÂY LÀ TRÌNH PHÁT VIDEO CHUYÊN DỤNG (PLAYER) -->
+        <!-- ========================================== -->
+        <div id="playerView" class="hidden w-full relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-900">
+            <!-- Thẻ Video chính (Không dùng controls mặc định để tự quản lý touch) -->
+            <video id="mainVideo" class="w-full h-full block object-contain aspect-video"></video>
+            
+            <!-- LỚP ĐIỀU KHIỂN CẢM ỨNG VR (NẰM TRÊN VIDEO) -->
+            <div class="touch-overlay">
+                <!-- Vùng Trái (33%): Lùi / Tua nhanh -->
+                <div id="leftZone" class="gesture-zone w-[33%]"></div>
+                <!-- Vùng Giữa (34%): Play-Pause / Thoát -->
+                <div id="midZone" class="gesture-zone w-[34%]"></div>
+                <!-- Vùng Phải (33%): Tiến / Tua nhanh -->
+                <div id="rightZone" class="gesture-zone w-[33%]"></div>
+            </div>
+
+            <!-- OVERLAY THÔNG BÁO TRẠNG THÁI (MỨC ĐỘ TỐI GIẢN CAO KHÔNG LÀM PHÂN TÂM) -->
+            <div id="statusIndicator" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/60 text-slate-300 px-5 py-3 rounded-lg text-xl font-mono pointer-events-none opacity-0 transition-opacity duration-150 z-30 tracking-widest">
+                <span id="statusIndicatorText">▶</span>
+            </div>
+
+            <!-- THANH ĐIỀU KHIỂN CUSTOM (TỰ ẨN KHI KHÔNG COI CHUỘT) -->
+            <div id="customControls" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-6 pt-16 transition-opacity duration-300 opacity-100 z-20 space-y-4">
+                
+                <!-- Thanh tiến trình phát (Scrub Bar) -->
+                <div class="flex items-center gap-4">
+                    <span id="currentTimeLabel" class="text-xs font-mono text-slate-400">00:00:00</span>
+                    <input type="range" id="progressBar" min="0" max="100" value="0" class="flex-1 accent-cyan-500 h-1 bg-slate-800 rounded-lg cursor-pointer hover:h-2 transition-all">
+                    <span id="durationLabel" class="text-xs font-mono text-slate-400">00:00:00</span>
+                </div>
+
+                <!-- Các nút chức năng và thông tin phim -->
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="space-y-1 max-w-[70%]">
+                        <h3 id="playerMovieTitle" class="font-bold text-slate-100 text-sm md:text-base truncate">Đang phát: Chưa có tên</h3>
+                        <p id="playerSubTitle" class="text-xs text-slate-400 flex items-center gap-1">
+                            <span>💬 Phụ đề:</span> <span id="playerSubName" class="text-cyan-400 font-medium">Không có</span>
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-3 self-end md:self-auto">
+                        <button id="playPauseBtn" onclick="togglePlayPause()" class="p-3 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-200 transition active:scale-95">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path id="playSvgPath" d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <button onclick="exitPlayer()" class="px-5 py-2.5 bg-slate-900 hover:bg-red-950/40 text-red-400 hover:text-red-300 border border-slate-800 hover:border-red-900/30 rounded-xl font-bold text-sm transition flex items-center gap-1">
+                            <span>⏹</span> Thoát Rạp
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-600">
+        Thiết kế tối ưu hóa cho kính VR & Trình duyệt Space Walker di động.
+    </footer>
+
+    <!-- LOGIC NGHIỆP VỤ (JAVASCRIPT) -->
+    <script>
+        // DOM Elements
+        const mainVideo = document.getElementById('mainVideo');
+        const dashboardView = document.getElementById('dashboardView');
+        const playerView = document.getElementById('playerView');
+        const mediaFileInput = document.getElementById('mediaFileInput');
+        
+        // Dashboard Elements
+        const resumeCard = document.getElementById('resumeCard');
+        const resumeTitle = document.getElementById('resumeTitle');
+        const resumeMeta = document.getElementById('resumeMeta');
+
+        // Player Elements
+        const customControls = document.getElementById('customControls');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeLabel = document.getElementById('currentTimeLabel');
+        const durationLabel = document.getElementById('durationLabel');
+        const playerMovieTitle = document.getElementById('playerMovieTitle');
+        const playerSubName = document.getElementById('playerSubName');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const playSvgPath = document.getElementById('playSvgPath');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusIndicatorText = document.getElementById('statusIndicatorText');
+
+        // Touch Zones
+        const leftZone = document.getElementById('leftZone');
+        const midZone = document.getElementById('midZone');
+        const rightZone = document.getElementById('rightZone');
+
+        // SVG Icon Paths
+        const PLAY_PATH = "M8 5v14l11-7z";
+        const PAUSE_PATH = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
+
+        // Global Variables
+        let currentMode = 'new'; // 'new' hoặc 'resume'
+        let currentVideoFile = null;
+        let controlsTimeout = null;
+        let lastInteractionTime = Date.now();
+        let indicatorTimeout = null;
+
+        // Khởi động khi mở app
+        window.onload = function() {
+            checkHistory();
+            initControlBarAutoHide();
+        };
+
+        // ==========================================
+        // 1. QUẢN LÝ LỊCH SỬ XEM PHIM (LOCALSTORAGE)
+        // ==========================================
+
+        function checkHistory() {
+            const lastMovieName = localStorage.getItem('vr_last_movie_name');
+            if (lastMovieName) {
+                const savedPos = parseFloat(localStorage.getItem(`vr_pos_${lastMovieName}`)) || 0;
+                const savedSubName = localStorage.getItem(`vr_sub_name_${lastMovieName}`) || 'Không có';
+                
+                resumeTitle.innerText = lastMovieName;
+                resumeMeta.innerText = `Đã xem đến: ${formatTime(savedPos)} • Phụ đề: ${savedSubName}`;
+                resumeCard.classList.remove('hidden');
+            } else {
+                resumeCard.classList.add('hidden');
+            }
+        }
+
+        function savePlaybackState() {
+            if (!currentVideoFile) return;
+            const movieName = currentVideoFile.name;
+            localStorage.setItem('vr_last_movie_name', movieName);
+            localStorage.setItem(`vr_pos_${movieName}`, mainVideo.currentTime);
+        }
+
+        function clearHistory() {
+            if(confirm("Bạn có muốn xóa toàn bộ lịch sử xem phim và bộ nhớ phụ đề đã lưu?")) {
+                localStorage.clear();
+                currentVideoFile = null;
+                checkHistory();
+                showTemporaryIndicator("Cleared");
+            }
+        }
+
+        // ==========================================
+        // 2. XỬ LÝ NHẬP VÀ ĐỌC FILE (VIDEO + PHỤ ĐỀ)
+        // ==========================================
+
+        function triggerFileSelect(mode) {
+            currentMode = mode;
+            
+            // Fix ẩu: Nếu đang trong cùng một phiên tab mà bấm Chơi tiếp, và file vẫn đang lưu trong bộ nhớ tạm
+            if (mode === 'resume' && currentVideoFile) {
+                launchPlayer(currentVideoFile, null);
+                return;
+            }
+            
+            // Chỉ khi f5 lại trang hoặc chưa chọn lần nào mới lôi File Selector ra
+            mediaFileInput.click();
+        }
+
+        function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            let videoFile = null;
+            let subFile = null;
+
+            // Phân loại tệp tin
+            files.forEach(file => {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'].includes(ext)) {
+                    videoFile = file;
+                } else if (['srt', 'vtt'].includes(ext)) {
+                    subFile = file;
+                }
+            });
+
+            // Trường hợp người dùng đang nhấn nút "CHƠI TIẾP"
+            if (currentMode === 'resume') {
+                const savedMovieName = localStorage.getItem('vr_last_movie_name');
+                if (videoFile && videoFile.name !== savedMovieName) {
+                    
+                    currentMode = 'new';
+                } else if (!videoFile && files.length > 0) {
+                    alert("Hãy chọn đúng tệp tin video để tiếp tục xem dở nhé mậy!");
+                    return;
+                }
+            }
+
+            if (!videoFile && currentMode === 'new') {
+                alert("Mày chưa chọn file video (MP4, MKV...) nào kìa!");
+                return;
+            }
+
+            // Tiến hành mở rạp phim
+            if (videoFile) {
+                currentVideoFile = videoFile;
+                launchPlayer(videoFile, subFile);
+            }
+        }
+
+        function launchPlayer(videoFile, subFile) {
+            const movieName = videoFile.name;
+            playerMovieTitle.innerText = `Đang phát: ${movieName}`;
+
+            // Tạo đường dẫn tạm thời cho Video
+            const videoURL = URL.createObjectURL(videoFile);
+            mainVideo.src = videoURL;
+
+            // Xử lý nạp Phụ đề
+            if (subFile) {
+                // Nếu có chọn file phụ đề mới kèm theo
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    let text = e.target.result;
+                    if (subFile.name.endsWith('.srt')) {
+                        text = convertSrtToVtt(text);
+                    }
+                    // Cất vào cache localStorage phòng lần sau không cần chọn lại file sub
+                    localStorage.setItem(`vr_sub_cache_${movieName}`, text);
+                    localStorage.setItem(`vr_sub_name_${movieName}`, subFile.name);
+                    
+                    loadSubtitleTrack(text, subFile.name);
+                };
+                reader.readAsText(subFile);
+            } else {
+                // Nếu không chọn sub kèm theo, lục hòm thư xem có sub đã lưu trước đó không
+                const cachedSubText = localStorage.getItem(`vr_sub_cache_${movieName}`);
+                const cachedSubName = localStorage.getItem(`vr_sub_name_${movieName}`);
+                if (cachedSubText) {
+                    loadSubtitleTrack(cachedSubText, cachedSubName);
+                } else {
+                    // Không có phụ đề nào cả
+                    const oldTrack = mainVideo.querySelector('track');
+                    if (oldTrack) oldTrack.remove();
+                    playerSubName.innerText = "Không có phụ đề";
+                }
+            }
+
+            // Chuyển sang màn hình Player
+            dashboardView.classList.add('hidden');
+            playerView.classList.remove('hidden');
+
+            // Thiết lập vị trí phát dở dang nếu có
+            mainVideo.onloadedmetadata = function() {
+                const savedPos = parseFloat(localStorage.getItem(`vr_pos_${movieName}`)) || 0;
+                mainVideo.currentTime = savedPos;
+                
+                // Đưa ứng dụng vào chế độ FULLSCREEN (Chơi tẹt ga trong VR)
+                requestFullScreen(playerView);
+                mainVideo.play();
+                updatePlayPauseUI(true);
+            };
+        }
+
+        // Hàm phân tích và chuyển đổi SRT sang WebVTT chuẩn HTML5
+        function convertSrtToVtt(srtText) {
+            let vtt = srtText.replace(/\r/g, '');
+            vtt = vtt.replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g, '$1.$2');
+            return "WEBVTT\n\n" + vtt;
+        }
+
+        // Trích xuất file sub vào thẻ track của video
+        function loadSubtitleTrack(vttText, subName) {
+            const oldTrack = mainVideo.querySelector('track');
+            if (oldTrack) oldTrack.remove();
+
+            const blob = new Blob([vttText], { type: 'text/vtt' });
+            const trackURL = URL.createObjectURL(blob);
+            
+            const track = document.createElement('track');
+            track.kind = 'subtitles';
+            track.label = 'Tiếng Việt (Auto)';
+            track.srclang = 'vi';
+            track.src = trackURL;
+            track.default = true;
+
+            mainVideo.appendChild(track);
+            playerSubName.innerText = subName;
+            
+            // Ép buộc trình duyệt hiển thị phụ đề ngay
+            if (mainVideo.textTracks.length > 0) {
+                mainVideo.textTracks[0].mode = 'showing';
+            }
+        }
+
+        // ==========================================
+        // 3. ĐIỀU KHIỂN VIDEO VÀ TIẾN TRÌNH
+        // ==========================================
+
+        function togglePlayPause() {
+            if (mainVideo.paused) {
+                mainVideo.play();
+                updatePlayPauseUI(true);
+                showTemporaryIndicator("▶");
+            } else {
+                mainVideo.pause();
+                updatePlayPauseUI(false);
+                showTemporaryIndicator("II");
+            }
+        }
+
+        // Cập nhật biểu tượng nút điều khiển bên dưới
+        function updatePlayPauseUI(isPlaying) {
+            playSvgPath.setAttribute('d', isPlaying ? PAUSE_PATH : PLAY_PATH);
+        }
+
+        // Cập nhật thanh kéo và nhãn thời gian
+        mainVideo.addEventListener('timeupdate', function() {
+            if (mainVideo.duration) {
+                const percent = (mainVideo.currentTime / mainVideo.duration) * 100;
+                progressBar.value = percent;
+                currentTimeLabel.innerText = formatTime(mainVideo.currentTime);
+                durationLabel.innerText = formatTime(mainVideo.duration);
+
+                // Tự động lưu vị trí phát dở định kỳ mỗi 5s
+                if (Math.floor(mainVideo.currentTime) % 5 === 0) {
+                    savePlaybackState();
+                }
+            }
+        });
+
+        // Tua bằng thanh trượt
+        progressBar.addEventListener('input', function() {
+            const time = (progressBar.value / 100) * mainVideo.duration;
+            mainVideo.currentTime = time;
+            currentTimeLabel.innerText = formatTime(time);
+        });
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Thoát rạp phim
+        function exitPlayer() {
+            savePlaybackState();
+            mainVideo.pause();
+            
+            // Thoát khỏi chế độ Fullscreen nếu có
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+
+            playerView.classList.add('hidden');
+            dashboardView.classList.remove('hidden');
+            mainVideo.src = ""; // giải phóng tài nguyên
+            
+            checkHistory(); // Cập nhật lại thẻ Resume ngoài Dashboard
+        }
+
+        // ==========================================
+        // 4. HỆ THỐNG CỬ CHỈ GESTURE CHUYÊN VR
+        // ==========================================
+
+        // Tạo sự kiện chạm đúp (Double Tap) thủ công để tránh độ trễ của VR Pointer
+        function setupDoubleTap(element, onDoubleTapCallback, onSingleTapCallback = null) {
+            let tapCount = 0;
+            let tapTimer = null;
+            
+            element.addEventListener('click', function(e) {
+                // Bỏ qua nếu click vào vùng điều khiển dưới cùng
+                if (e.target.closest('#customControls')) return;
+
+                tapCount++;
+                if (tapCount === 1) {
+                    tapTimer = setTimeout(() => {
+                        tapCount = 0;
+                        if (onSingleTapCallback && !isSpeedBoosting) {
+                            onSingleTapCallback(e);
+                        }
+                    }, 300); // 300ms tối ưu cho nhấp đúp
+                } else if (tapCount === 2) {
+                    clearTimeout(tapTimer);
+                    tapCount = 0;
+                    onDoubleTapCallback(e);
+                }
+            });
+        }
+
+        // Thiết lập sự kiện Nhấn Giữ (Hold to 2X Speed)
+        let holdTimer = null;
+        let isSpeedBoosting = false;
+
+        function startHoldDetection(element) {
+            const onStart = (e) => {
+                if (e.target.closest('#customControls')) return;
+                isSpeedBoosting = false;
+                
+                holdTimer = setTimeout(() => {
+                    isSpeedBoosting = true;
+                    mainVideo.playbackRate = 2.0;
+                    showTemporaryIndicator("2X", true);
+                }, 400); // Nhấn giữ 400ms để tăng tốc
+            };
+
+            const onEnd = () => {
+                clearTimeout(holdTimer);
+                if (isSpeedBoosting) {
+                    mainVideo.playbackRate = 1.0;
+                    hideTemporaryIndicator();
+                    // Đợi xíu để ngăn sự kiện click sau khi nhấc tay
+                    setTimeout(() => { isSpeedBoosting = false; }, 100);
+                }
+            };
+
+            element.addEventListener('mousedown', onStart);
+            element.addEventListener('mouseup', onEnd);
+            element.addEventListener('mouseleave', onEnd);
+
+            element.addEventListener('touchstart', onStart, { passive: true });
+            element.addEventListener('touchend', onEnd, { passive: true });
+        }
+
+        // Đăng ký cử chỉ cho từng phân vùng màn hình
+        // VÙNG TRÁI: Double Click để lùi 5s, Giữ để tua nhanh
+        setupDoubleTap(leftZone, () => {
+            mainVideo.currentTime = Math.max(0, mainVideo.currentTime - 5);
+            showTemporaryIndicator("◀◀");
+        });
+        startHoldDetection(leftZone);
+
+        // VÙNG PHẢI: Double Click để tiến 5s, Giữ để tua nhanh
+        setupDoubleTap(rightZone, () => {
+            mainVideo.currentTime = Math.min(mainVideo.duration, mainVideo.currentTime + 5);
+            showTemporaryIndicator("▶▶");
+        });
+        startHoldDetection(rightZone);
+
+        // VÙNG GIỮA: Click đơn để Tạm dừng/Phát, Click đúp để Thoát
+        setupDoubleTap(midZone, 
+            () => { // Click đúp: Tắt Fullscreen và ngừng phát phim
+                exitPlayer();
+            }, 
+            () => { // Click đơn: Play / Pause
+                togglePlayPause();
+            }
+        );
+
+        // ==========================================
+        // 5. HIỆN THỊ TRẠNG THÁI & TỰ ẨN ĐIỀU KHIỂN
+        // ==========================================
+
+        function showTemporaryIndicator(symbol, persistent = false) {
+            statusIndicatorText.innerText = symbol;
+            statusIndicator.style.opacity = '1';
+            
+            if (!persistent) {
+                // Tự động ẩn nhanh sau 800ms cho mượt mà không vướng mắt
+                clearTimeout(indicatorTimeout);
+                indicatorTimeout = setTimeout(hideTemporaryIndicator, 800);
+            }
+        }
+
+        function hideTemporaryIndicator() {
+            statusIndicator.style.opacity = '0';
+        }
+
+        // Tự động ẩn thanh điều khiển sau 3s không tương tác
+        function initControlBarAutoHide() {
+            const resetTimer = () => {
+                customControls.style.opacity = '1';
+                customControls.style.pointerEvents = 'auto';
+                lastInteractionTime = Date.now();
+                
+                clearTimeout(controlsTimeout);
+                controlsTimeout = setTimeout(() => {
+                    // Không ẩn thanh điều khiển nếu video đang dừng phát
+                    if (!mainVideo.paused && (Date.now() - lastInteractionTime >= 3000)) {
+                        customControls.style.opacity = '0';
+                        customControls.style.pointerEvents = 'none';
+                    }
+                }, 3000);
+            };
+
+            // Theo dõi di chuyển chuột hoặc bấm phím trong vùng phát
+            playerView.addEventListener('mousemove', resetTimer);
+            playerView.addEventListener('click', resetTimer);
+            playerView.addEventListener('touchstart', resetTimer, { passive: true });
+        }
+
+        // ==========================================
+        // 6. TIỆN ÍCH HỖ TRỢ TRÌNH DUYỆT / FULLSCREEN
+        // ==========================================
+
+        function requestFullScreen(element) {
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.webkitRequestFullscreen) { /* Safari / Trình duyệt iOS */
+                element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) {
+                element.msRequestFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
